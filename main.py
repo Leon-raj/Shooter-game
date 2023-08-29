@@ -42,20 +42,20 @@ class Background():
 class SpriteSheet():
     def __init__(self, location, sprite_width, sprite_height, scale=(1.0, 1.0)):
         sprite_sheet = pygame.image.load(location).convert_alpha()
-        sprite_sheet = pygame.transform.scale_by(sprite_sheet, scale)
-        sheet_width = sprite_sheet.get_width()
-        sheet_height = sprite_sheet.get_height()
-        sprite_width = sprite_width * scale[0]
-        sprite_height = sprite_height * scale[1]
-        self.rows = int(sheet_height // sprite_height)
-        self.columns = int(sheet_width // sprite_width)
+        self.sprite_sheet = pygame.transform.scale_by(sprite_sheet, scale)
+        sheet_width = self.sprite_sheet.get_width()
+        sheet_height = self.sprite_sheet.get_height()
+        self.sprite_width = sprite_width * scale[0]
+        self.sprite_height = sprite_height * scale[1]
+        self.rows = int(sheet_height // self.sprite_height)
+        self.columns = int(sheet_width // self.sprite_width)
 
         self.sprite_list = []
-        frame = pygame.Surface((sprite_width, sprite_height))
+        frame = pygame.Surface((self.sprite_width, self.sprite_height))
         for j in range(self.rows):
             for k in range(self.columns):
                 frame.fill((255, 255, 255))
-                frame.blit(sprite_sheet, (0, 0), (k * sprite_width, j * sprite_height, sprite_width, sprite_height))
+                frame.blit(self.sprite_sheet, (0, 0), (k * self.sprite_width, j * self.sprite_height, self.sprite_width, self.sprite_height))
                 frame.set_colorkey((255, 255, 255))
                 temp_frame = pygame.Surface.copy(frame)
                 self.sprite_list.append(temp_frame)
@@ -69,6 +69,18 @@ class SpriteSheet():
         index_start = ((row-1) * self.columns)
         index_end = self.columns * ((row-1) + 1)
         return self.sprite_list[index_start:index_end]
+
+    def get_large_sprite(self, row_start, row_end, column_start, column_end):
+        height = (row_end - row_start) * self.sprite_height
+        print(self.sprite_width, self.sprite_height)
+        width = (column_end - column_start) * self.sprite_width
+        x = (column_start - 1) * self.sprite_width
+        y = (row_start - 1) * self.sprite_height
+        frame = pygame.Surface((width, height))
+        frame.blit(self.sprite_sheet, (0,0), (x, y, width, height))
+        temp = pygame.Surface.copy(frame)
+        return temp
+
 
 
 class Foreground():
@@ -132,7 +144,7 @@ class Player():
         elif movement == 'DOWN':
             if self.dy<720-200:
                 self.dy+=5
-            elif self.dy<720-64:
+            elif self.dy<720-65:    #~64
                 if foreground.dy==0:
                     self.dy+=5
                 else:
@@ -155,11 +167,11 @@ class Player():
 background = Background('background', 5, 64, 6, (1.8, 2.4))
 tiles = SpriteSheet('Tileset.png', 32, 32, (2,2))
 
-row1 = tiles.get_sprites(2)
+
 player = Player(0,0, 400,600)
 tile = tiles.get_sprite(1,2)
-foreground = Foreground(6000, 720, 64, 64, [[tile, 0, 2, 0, 3],[tile,4,6,5,6]], 64)
-
+platform = tiles.get_large_sprite(3, 4, 5, 9)
+foreground = Foreground(6000, 720, 64, 64, [], 64)
 overlay=pygame.image.load('Overlay.png').convert_alpha()
 overlay.set_alpha(80)
 overlay=pygame.transform.scale(overlay,(display_width,display_height))
@@ -176,13 +188,9 @@ while run:
             run=False
 
     background.display()
-    for i, sprite in enumerate(row1):
-        screen.blit(sprite,(i*64,display_height-64))
-
     screen.blit(tiles.get_sprite(1, 1), (player.dx, player.dy))
     screen.blits(foreground.blit_list)
     screen.blit(overlay,(0,0))
-
     pygame.display.update()
 
 
