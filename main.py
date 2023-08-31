@@ -3,7 +3,7 @@ pygame.init()
 clock = pygame.time.Clock()
 display_width = 1280
 display_height = 720
-screen = pygame.display.set_mode((display_width, display_height),pygame.RESIZABLE)
+screen = pygame.display.set_mode((display_width, display_height))
 
 class Background():
     def __init__(self, folder_location, num_of_layers, y_offset=0, repetition=2, scale=(1.0, 1.0)):
@@ -17,7 +17,7 @@ class Background():
 
         self.layers = []
         for i in range(1, num_of_layers+1):
-            layer = pygame.image.load(f'{folder_location}\{i}.png')
+            layer = pygame.image.load(f'{folder_location}\{i}.png').convert_alpha()
             layer = pygame.transform.scale_by(layer, scale)
             self.layers.append(layer)
 
@@ -77,25 +77,38 @@ class SpriteSheet():
         x = (column_start - 1) * self.sprite_width
         y = (row_start - 1) * self.sprite_height
         frame = pygame.Surface((width, height))
+        frame.fill((255,255,255))
         frame.blit(self.sprite_sheet, (0,0), (x, y, width, height))
+        frame.set_colorkey((255,255,255))
         temp = pygame.Surface.copy(frame)
         return temp
 
 
 
 class Foreground():
-    def __init__(self, map_width, map_height, tile_width, tile_height, layout, dx = 0, dy = 0):
+    def __init__(self, map_width, map_height, tile_width = 64, tile_height = 64, layout = [[]], dx = 0, dy = 0):
 
         self.dx = dx
         self.dy = dy
         self.blit_list=[]
+
         for object in layout:
             sprite = object[0]
-            for row in range(object[1],object[2]+1):
-                y = map_height - row * tile_height + dy
-                for column in range(object[3],object[4]+1):
-                    x = column * tile_width + dx
-                    rect = sprite.get_rect(bottomleft=(x, y))
+            sprite_height = sprite.get_height()
+            sprite_width = sprite.get_width()
+            x_scale = sprite_width//tile_width
+            y_scale = sprite_height//tile_height
+            y = map_height - (object[1] * tile_height) + dy
+            x = (object[3] * tile_width) + dx
+            rows = (object[2] - object[1]) // y_scale
+            columns = (object[4] - object[3]) // x_scale
+
+
+            for row in range(rows):
+                y2 = y - (row * sprite_height)
+                for column in range(columns):
+                    x2 = x + (column * sprite_width)
+                    rect = sprite.get_rect(bottomleft=(x2, y2))
                     temp_tup = (sprite, rect)
                     self.blit_list.append(temp_tup)
 
@@ -164,14 +177,14 @@ class Player():
 
 
 #Below is test code.
-background = Background('background', 5, 64, 6, (1.8, 2.4))
+background = Background('background', 5, 0, 6, (1.8, 2.4))
 tiles = SpriteSheet('Tileset.png', 32, 32, (2,2))
 
 
 player = Player(0,0, 400,600)
-tile = tiles.get_sprite(1,2)
-platform = tiles.get_large_sprite(3, 4, 5, 9)
-foreground = Foreground(6000, 720, 64, 64, [], 64)
+tile = tiles.get_large_sprite(1,2,2,4)
+platform = tiles.get_large_sprite(4, 6, 6, 8)
+foreground = Foreground(6000, 720, 64, 64, [[tile, 0,1,-80,80]])
 overlay=pygame.image.load('Overlay.png').convert_alpha()
 overlay.set_alpha(80)
 overlay=pygame.transform.scale(overlay,(display_width,display_height))
@@ -182,11 +195,12 @@ dx=0
 dy=0
 while run:
     movement = 'NONE'
-    clock.tick(60)
+    #clock.tick(60)
     for event in pygame.event.get():
         if event.type==pygame.QUIT:
             run=False
 
+    screen.fill((255,255,255))
     background.display()
     screen.blit(tiles.get_sprite(1, 1), (player.dx, player.dy))
     screen.blits(foreground.blit_list)
@@ -198,7 +212,6 @@ while run:
     if keys[pygame.K_LEFT] == True:
         movement = 'LEFT'
         player.update(movement)
-        #pygame.display.toggle_fullscreen()
     if keys[pygame.K_RIGHT] == True:
         movement = 'RIGHT'
         player.update(movement)
