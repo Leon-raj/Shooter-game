@@ -110,13 +110,16 @@ class SpriteSheet():
 class Foreground():
     def __init__(self, map_width, map_height, tile_width = 64, tile_height = 64, layout = [[]], dx = 0, dy = 0):
 
+
         self.dx = dx
         self.dy = dy
         self.tile_width = tile_width
         self.tile_height = tile_height
+        self.spritedict = {}
         self.movable_objects = []
         self.move_infos = []
         self.non_movable_objects = []
+        self.spritelist = pygame.sprite.Group
 
         for object in layout:
             sprite = object.sprite
@@ -142,6 +145,7 @@ class Foreground():
                     else:
                         self.non_movable_objects.append(temp_tup)
 
+
         self.blit_list = [self.movable_objects, self.non_movable_objects]
 
     def move(self, dx, dy):
@@ -155,10 +159,10 @@ class Foreground():
         for i, tup in enumerate(self.movable_objects):
             move_info = self.move_infos[i]
             rect = tup[1]
-            bottom = move_info[0] * self.tile_height
-            top = move_info[1] * self.tile_height
-            left = move_info[2] * self.tile_width
-            right = move_info[3] * self.tile_width
+            bottom = move_info[0] * self.tile_height + self.dy
+            top = move_info[1] * self.tile_height + self.dy
+            left = move_info[2] * self.tile_width + self.dx
+            right = move_info[3] * self.tile_width + self.dx
             speed = move_info[4]
             directions = move_info[5]
 
@@ -201,15 +205,157 @@ class Foreground():
             screen.blits(list)
 
 
+
+
+
+
+
+class Object():
+    def __init__(self, sprite, row_start, row_end, column_start, column_end, range_and_speed = None, solid = True):
+        self.sprite = sprite
+        self.row_start = row_start
+        self.row_end = row_end
+        self.column_start = column_start
+        self.column_end = column_end
+        self.move_info = range_and_speed
+        self.solid = solid
+
+
+class Gun():
+    def __init__(self, name, range, damage, bps, reload_speed, offsets):           #offsets is the difference of distance between hand and the gun for each hand pose for each character. offsets={'char1':((+7, +2), (+2, -5)), 'char2':((+5, +7), (+5, -8))}
+        self.name = name
+        self.range = range
+        self.damage = damage
+        self.bps = bps
+        self.reload_speed = reload_speed
+        self.offsets = offsets
+
+        self.sprite = pygame.image.load(f'guns/{name}/gun/1.png').convert_alpha()
+        self.tilted_sprite = pygame.image.load(f'guns/{name}/gun/2.png').convert_alpha()
+
+        effect_sheet = SpriteSheet(f'guns/{name}/effects/1.png', 48, 48)
+        self.effects = effect_sheet.get_sprites(1)
+        effect_sheet = SpriteSheet(f'guns/{name}/effects/2.png', 48, 48)
+        self.tilted_effects = effect_sheet.get_sprites(1)
+
+        self.bullet_sprite = pygame.image.load(f'guns/{name}/bullet.png').convert_alpha()
+
+
+
+class Character():
+    def __init__(self, name, actions={}, hand_offsets={}):                  #actions={'ACTION1':FPS, 'ACTION2':FPS2}
+        self.name = name
+
+        for action in actions.keys():
+            sprite_sheet = SpriteSheet(f'characters/{name}/actions/{action}.png', 48, 48)
+            sprites = sprite_sheet.get_sprites(1)
+            sprite_fps = actions[action]
+            tup = (sprites, sprite_fps)
+            actions[action] = tup
+
+        self.actions = actions
+        self.hand_offsets = hand_offsets
+
+        self.hands = []
+        for i in range(5):
+            hand = pygame.image.load(f'characters/{name}/hands/{i+1}.png')
+            self.hands.append(hand)
+
+
 class Player():
-    def __init__(self, environment_dx, environment_dy, dx, dy):
+
+    controlless_actions = ('DEATH', 'DOUBLEJUMP', 'RUN')
+    scenes = ('DOUBLEJUMP', 'JUMP', 'DEATH')
+    def __init__(self, character, environment_dx, environment_dy, dx, dy):
+        self.character = character
         self.environment_dx = environment_dx
         self.environment_dy = environment_dy
+        foreground.move(environment_dx, environment_dy)
+        background.move(environment_dx, environment_dy)
         self.dx = dx
         self.dy = dy
         self.pos = (self.dx, self.dy, self.environment_dx, self.environment_dy)
+        self.inventory = []
 
-    def update(self, movement):
+        self.time_elapsed = 0
+        self.count = 0
+        self.prev_action = 'NONE'
+        self.sprites = []
+        self.ms_per_frame = 0
+        self.hand_num = 1
+        self.flip = False
+
+    def act(self, action, del_time, hold='NONE'):
+        self.time_elapsed += del_time
+
+        if action != self.prev_action:
+            if self.prev_action not in Player.scenes:
+                self.sprites = self.character.actions[action][0]
+                self.ms_per_frame = (1 / self.character.actions[action][1]) * 1000
+                self.prev_action = action
+                self.count = 0
+
+        elif self.time_elapsed > self.ms_per_frame:
+            if self.count < (len(self.sprites)-1):
+                self.count += 1
+                print('frame')
+            else:
+                if self.count != hold:
+                    self.prev_action = 'NONE'
+                    self.count = 0
+            self.time_elapsed = 0
+
+        if hold != 'NONE':
+            if self.count>hold:
+                self.count = hold
+
+        print(self.count)
+        hand_offset = self.character.hand_offsets[action][self.count]
+
+        hand =  self.character.hands[self.hand_num]
+
+        pose = self.sprites[self.count]
+
+
+        temp = pygame.Surface((48, 48))
+        temp.fill((255,255,255))
+        temp.blit(pose, (0, 0))
+        temp.blit(hand, (hand_offset[0] , hand_offset[1] ))
+        temp.set_colorkey((255,255,255))
+        temp = pygame.transform.scale_by(temp, 4)
+
+        if self.flip:
+            temp = pygame.transform.flip(temp, True, False)
+
+        pose_rect = pose.get_rect(center=(player.dx, player.dy))
+        screen.blit(temp, (pose_rect))
+
+
+    def move_hand(self, angle):
+        if -67.5 >= angle > -112.5:
+            self.hand_num = 0
+        elif -22.5 >= angle > -67.5:
+            self.hand_num = 1
+        elif 22.5 >= angle > -22.5:
+            self.hand_num = 2
+        elif 67.5 >= angle > 22.5:
+            self.hand_num = 3
+        elif 112.5 >= angle > 67.5:
+            self.hand_num = 4
+        elif 157.5 >= angle > 112.5:
+            self.hand_num = 3
+        elif (180 >= angle > 157.5) or (-157.5 >= angle > -180):
+            self.hand_num = 2
+        elif -112.5 >= angle > -157.5:
+            self.hand_num = 1
+
+        if (180 > angle > 90) or (-90 > angle > -180):
+            self.flip = True
+        else:
+            self.flip = False
+
+
+    def update(self, movement, del_time):
 
         if movement == 'LEFT':
             if self.dx>250:
@@ -218,12 +364,18 @@ class Player():
                 foreground.move(5,0)
                 background.move(5,0)
 
+            self.flip = True
+            self.act('WALK', del_time)
+
         elif movement == 'RIGHT':
             if self.dx<1030:
                 self.dx+=5
             else:
                 foreground.move(-5,0)
                 background.move(-5,0)
+
+            self.flip = False
+            self.act('WALK', del_time)
 
         elif movement == 'UP':
             if self.dy > 150:
@@ -243,81 +395,103 @@ class Player():
                     foreground.move(0,-5)
                     background.move(0,-5)
 
+        else:
+            self.act('IDLE', del_time)
 
 
-
-class Object():
-    def __init__(self, sprite, row_start, row_end, column_start, column_end, range_and_speed = None, solid = True):
-        self.sprite = sprite
-        self.row_start = row_start
-        self.row_end = row_end
-        self.column_start = column_start
-        self.column_end = column_end
-        self.move_info = range_and_speed
-        self.solid = solid
-
-
+def get_angle(point1, point2):
+    x = point2[0] - point1[0]
+    y = point1[1] - point2[1]
+    angle = math.degrees(math.atan2(y, x))
+    return angle
 
 
 
 #Below is test code.
 background = Background('background', 5, 0, 10, (1.8, 2.4))
 num=[]
-player = Player(0,0, 400,600)
+
+
+bullet = pygame.image.load('guns/Frostfire/bullet.png').convert_alpha()
+bullet= pygame.transform.scale_by(bullet,4)
+bullet= pygame.transform.rotate(bullet,25)
 
 tiles = SpriteSheet('Tileset.png', 32, 32, (2,2))
 ground_tile = tiles.get_large_sprite(1,2,2,4)
 platform_sprite = tiles.get_large_sprite(3, 4, 5, 9)
 small_platform_sprite = tiles.join('H', [(3,5),(3,8)])
+platform_tile= tiles.get_large_sprite(3, 4, 6, 8)
+platform_l_corner = tiles.get_sprite(3,5)
+platform_r_corner = tiles.get_sprite(3, 8)
+dome = tiles.get_large_sprite(4, 6, 6, 8)
 
 ground = Object(ground_tile, 0, 1, -100, 100)
 platform1 = Object(platform_sprite, 3, 4, 6, 10)
 small_platform = Object(small_platform_sprite, 5, 6, 11, 13, (5, 6, 11, 15, 3, ['RIGHT']))
+platform2 = Object(platform_tile, 7, 8, 4, 8)
+plc2 = Object(platform_l_corner, 7, 8, 3, 4)
+prc2 = Object(platform_r_corner, 7, 8, 8, 9)
+dome1 = Object(dome, 0, 2, -4,-2)
 
 
-foreground = Foreground(6000, 720, 64, 64, [ground, platform1, small_platform])
+foreground = Foreground(6000, 720, 64, 64, [ground, platform1, small_platform, platform2, plc2, prc2, dome1])
 #[platform, 3, 4, 6, 10, False],[small_platform, 5, 6, 11, 13, True]
 
+char = Character('Punk', {'IDLE':3, 'WALK':3}, {'IDLE':((5, 15), (4, 15), (4, 15), (5, 15)),
+                                                'WALK':((5, 14), (5, 14), (5, 14), (5, 15), (5, 14), (5, 13))})
+player = Player(char,0,0, 400,600)
 
 overlay=pygame.image.load('Overlay.png').convert_alpha()
-overlay.set_alpha(80)
+overlay.set_alpha(100)
 overlay=pygame.transform.scale(overlay,(display_width,display_height))
 
+
+import math
 
 run= True
 dx=0
 dy=0
+prev_time = 0
+del_time = 0
 while run:
+
+    cur_pos = pygame.mouse.get_pos()
     movement = 'NONE'
     foreground.auto_move()
-    clock.tick()
     for event in pygame.event.get():
         if event.type==pygame.QUIT:
             run=False
 
     screen.fill((255,255,255))
     background.display()
-    screen.blit(tiles.get_sprite(1, 1), (player.dx, player.dy))
+    screen.blit(tiles.get_sprite(1, 1), (300, 300))
     foreground.display()
     screen.blit(overlay,(0,0))
-    pygame.display.update()
+
+    angle = get_angle((player.dx, player.dy), cur_pos)
+    #screen.blit(bullet,(10,10))
 
 
     keys=pygame.key.get_pressed()
     if keys[pygame.K_LEFT] == True:
         movement = 'LEFT'
-        player.update(movement)
     if keys[pygame.K_RIGHT] == True:
         movement = 'RIGHT'
-        player.update(movement)
     if keys[pygame.K_UP] == True:
         movement = 'UP'
-        player.update(movement)
     elif keys[pygame.K_DOWN] == True:
         movement = 'DOWN'
-        player.update(movement)
+
+
+    player.update(movement, del_time)
+
+    pygame.display.update()
 
     num.append(clock.get_fps())
+    del_time = clock.tick_busy_loop(50)
+
+
+
 
 fps=0
 for n in num:
