@@ -295,9 +295,10 @@ class Player():
         self.ms_per_frame = 0
         self.hand_num = 1
         self.flip = False
-        self.prev_flip =True
+        self.prev_flip =False
+        self.flipped = False
 
-    def check_collision(self, temp_sprite):
+    def check_collision(self, temp_sprite, flip):
         count = 0
 
         change = 0
@@ -311,12 +312,13 @@ class Player():
                     collided_sprite = collided_sprites[0]
                     if self.dx < 0:
                         change = 1
-                        if self.prev_flip != self.flip:
-                            change = -1
                     elif self.dx > 0:
                         change = -1
-                        if self.prev_flip != self.flip:
-                            change = 1
+                    if self.prev_flip==True and self.flip==False:
+                        change = 1
+                    elif self.prev_flip==False and self.flip==True:
+                        change = -1
+
                     count = 0
                     while pygame.sprite.collide_mask(temp_sprite, collided_sprite) and self.dx!=0:
                         temp_sprite.rect.move_ip(change, 0)
@@ -341,12 +343,13 @@ class Player():
                         count += change
                     self.dy += count
         #temp_sprite.rect.move_ip(0, -(self.dy+count))
-        self.prev_flip = self.flip
+
+
 
 
     def move(self):
 
-        self.check_collision(self.character)
+        self.check_collision(self.character, self.flip)
 
         if 1030 > self.x > 250:
             self.x += self.dx
@@ -438,18 +441,20 @@ class Player():
             self.avatar = pygame.transform.flip(self.avatar, True, False)
 
 
+
     def update(self, movement, del_time):
+        self.prev_flip = self.flip
 
         if movement == 'LEFT':
             self.dx = - 5
             self.flip = True
-            self.act('WALK', del_time)
+            self.act('WALK', del_time,0)
 
 
         elif movement == 'RIGHT':
             self.dx = 5
             self.flip = False
-            self.act('WALK', del_time)
+            self.act('WALK', del_time,0)
 
         elif movement == 'UP':
             self.dy = -5
@@ -466,7 +471,15 @@ class Player():
 
 
         #self.dy+=3
+        if self.prev_flip!=self.flip:
+            self.flipped = True
+        else:
+            self.flipped = False
+        print(self.flipped)
         self.move()
+
+
+
 
     def display(self):
         self.character.display()
