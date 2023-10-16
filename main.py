@@ -295,6 +295,7 @@ class Player():
         self.ms_per_frame = 0
         self.hand_num = 1
         self.flip = False
+        self.prev_flip =True
 
     def check_collision(self, temp_sprite):
         count = 0
@@ -310,8 +311,12 @@ class Player():
                     collided_sprite = collided_sprites[0]
                     if self.dx < 0:
                         change = 1
+                        if self.prev_flip != self.flip:
+                            change = -1
                     elif self.dx > 0:
                         change = -1
+                        if self.prev_flip != self.flip:
+                            change = 1
                     count = 0
                     while pygame.sprite.collide_mask(temp_sprite, collided_sprite) and self.dx!=0:
                         temp_sprite.rect.move_ip(change, 0)
@@ -336,6 +341,7 @@ class Player():
                         count += change
                     self.dy += count
         #temp_sprite.rect.move_ip(0, -(self.dy+count))
+        self.prev_flip = self.flip
 
 
     def move(self):
@@ -459,7 +465,7 @@ class Player():
             self.act('IDLE', del_time)
 
 
-        self.dy+=3
+        #self.dy+=3
         self.move()
 
     def display(self):
