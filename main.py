@@ -298,9 +298,8 @@ class Player():
         self.prev_flip =False
         self.flipped = False
 
-    def check_collision(self, temp_sprite, flip):
+    def check_collision(self, temp_sprite):
         count = 0
-
         change = 0
 
         temp_sprite.rect.move_ip(self.dx, 0)
@@ -349,7 +348,7 @@ class Player():
 
     def move(self):
 
-        self.check_collision(self.character, self.flip)
+        self.check_collision(self.character)
 
         if 1030 > self.x > 250:
             self.x += self.dx
