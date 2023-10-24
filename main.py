@@ -1,4 +1,5 @@
 import pygame
+import math
 import copy
 
 pygame.init()
@@ -219,41 +220,44 @@ class Object():
 
 
 class Bullet(pygame.sprite.Sprite):
-    def __init_(self, image, damage, range_, direction_vector):
+    def __init__(self, image, damage, range_, direction_vector, start_pos):
+        pygame.sprite.Sprite.__init__(self)
         self.image = image
-        self.rect = image.get_rect()
+        self.rect = image.get_rect(center = start_pos)
         self.mask = pygame.mask.from_surface(image)
         self.damage = damage
         self.range = range_
         self.direction_vector = direction_vector
-        self.dx = 15 * direction_vector[0]
-        self.dy = 15 * direction_vector[1]
-        self.travellled = 0
+        self.magnitude = 25
+        self.dx = self.magnitude * direction_vector[0]
+        self.dy = self.magnitude * direction_vector[1]
+        self.travelled = 0
 
     def update(self):
-        if self.travelled+15 <= self.range:
-            self.rect.move_ip(self.dx, self.dy)
-            self.travellled+=15
 
-        elif self.travelled+15 > self.range:
-            dist_left = (self.range - self.travellled)
+        if self.travelled + self.magnitude <= self.range:
+            self.rect.move_ip(self.dx, self.dy)
+            self.travelled += self.magnitude
+
+        elif self.travelled + self.magnitude > self.range:
+            dist_left = (self.range - self.travelled)
             self.dx = dist_left * self.direction_vector[0]
             self.dy = dist_left * self.direction_vector[1]
             self.rect.move_ip(self.dx, self.dy)
-            self.travellled+=dist_left
+            self.travelled += dist_left
 
-        if self.travellled == self.range:
+        if round(self.travelled) == self.range:
             self.kill()
 
 class Gun():
-    def __init__(self, name, range, damage, bps, reload_speed,
-                 offsets):  # offsets is the difference of distance between hand and the gun for each hand pose for each character. offsets={'char1':((+7, +2), (+2, -5)), 'char2':((+5, +7), (+5, -8))}
+    def __init__(self, name, range, damage, bps, reload_speed, offsets, effect_offsets):  # offsets is the difference of distance between hand and the gun for each hand pose for each character. offsets={'char1':((+7, +2), (+2, -5)), 'char2':((+5, +7), (+5, -8))}
         self.name = name
         self.range = range
         self.damage = damage
         self.bps = bps
         self.reload_speed = reload_speed
         self.offsets = offsets
+        self.effect_offsets = effect_offsets
 
         image = pygame.image.load(f'guns/{name}/gun/1.png').convert_alpha()
         tilted_image = pygame.image.load(f'guns/{name}/gun/2.png').convert_alpha()
@@ -266,6 +270,7 @@ class Gun():
         self.effects = [effects, tilted_effects]
 
         self.bullet_image = pygame.image.load(f'guns/{name}/bullet.png').convert_alpha()
+        self.bullet_image = pygame.transform.scale_by(self.bullet_image, 3)
 
     def shoot(self, player_pos, cursor_pos):
         x1 = player_pos[0]
@@ -273,11 +278,14 @@ class Gun():
         x2 = cursor_pos[0]
         y2 = cursor_pos[1]
 
-        x_cap = (x2 - x1) / abs(x2 - x1 + y2 - y1)
-        y_cap = (y2 - y1) / abs(x2 - x1 + y2 - y1)
+        x_cap = (x2 - x1) / (math.sqrt((x2 - x1)**2 + (y2 - y1)**2))
+        y_cap = (y2 - y1) / (math.sqrt((x2 - x1)**2 + (y2 - y1)**2))
         dir_vtr = (x_cap, y_cap)
 
-        bullet = Bullet(self.bullet_image, self.damage, self.range, dir_vtr)
+        angle = get_angle(player_pos, cursor_pos)
+        bullet_image = pygame.transform.rotate(self.bullet_image, angle)
+        bullet = Bullet(bullet_image, self.damage, self.range, dir_vtr, player_pos)
+        bullet_group.add(bullet)
 
 
 class Character(pygame.sprite.Sprite):
@@ -340,8 +348,12 @@ class Player():
         self.gun_angle = 90
         self.flip = False
         self.prev_flip =False
-        self.flipped = False
         self.num = 0
+        self.shooted = False
+        self.shoot_time_elapsed = 0
+        self.count2 = 0
+        self.gun_offset = 0
+
     def check_collision(self, temp_sprite):
         count = 0
         change = 0
@@ -353,6 +365,7 @@ class Player():
                 collided_sprites = pygame.sprite.spritecollide(temp_sprite, group, False, pygame.sprite.collide_mask)
                 if collided_sprites:
                     collided_sprite = collided_sprites[0]
+                    # print('collision')
                     if self.dx < 0:
                         change = 1
                     elif self.dx > 0:
@@ -363,16 +376,16 @@ class Player():
                         else:
                             change=-1'''
 
-                    if self.prev_flip==True and self.flip==False:
+                    if self.prev_flip == True and self.flip == False:
                         change = 1
-                    elif self.prev_flip==False and self.flip==True:
+                    elif self.prev_flip == False and self.flip == True:
                         change = -1
 
 
-                    count = 0
-                    while pygame.sprite.collide_mask(temp_sprite, collided_sprite) and self.dx!=0:
+                    while pygame.sprite.collide_mask(temp_sprite, collided_sprite) and self.dx != 0:
                         temp_sprite.rect.move_ip(change, 0)
                         count += change
+
                     self.dx += count
                     count = 0
 
@@ -388,16 +401,17 @@ class Player():
                     elif self.dy > 0:
                         change = -1
 
-                    while pygame.sprite.collide_mask(temp_sprite, collided_sprite) and self.dy!=0:
+                    while pygame.sprite.collide_mask(temp_sprite, collided_sprite) and self.dy != 0:
                         temp_sprite.rect.move_ip(0, change)
                         count += change
                     self.dy += count
+
 
     def move(self):
 
         self.check_collision(self.character)
 
-        if 1030 > self.x > 250:
+        if (1030 > self.x and self.dx > 0) or (self.x > 200 and self.dx < 0):
             self.x += self.dx
         else:
             foreground.move(-self.dx, 0)
@@ -505,38 +519,16 @@ class Player():
         gun_offset = self.gun.offsets[self.character.name][self.hand_num]
         gun_x = gun_offset[0] + hand_offset[0]
         gun_y = gun_offset[1] + hand_offset[1]
-        gun_offset = (gun_x, gun_y)
-        #print(gun_offset)
-        gun_rect = gun_image.get_rect()
-
-        effect = self.gun.effects[self.gun_num][2]
-        effect = pygame.transform.rotate(effect, self.gun_angle)
-        effect_offset = (28, -36)
-
-        '''if self.hand_num == 0:
-            effect_offset = gun_rect.midbottom
-        elif self.hand_num == 1:
-            effect_offset = gun_rect.bottomright
-        elif self.hand_num == 2:
-            effect_offset = gun_rect.midright
-        elif self.hand_num == 3:
-            effect_offset = gun_rect.topright
-        elif self.hand_num == 4:
-            effect_offset = gun_rect.midtop
-
-        effect_x = effect_offset[0] + gun_offset[0]
-        effect_y = effect_offset[1] + gun_offset[1]
-        effect_offset = (effect_x, effect_y)'''
-
+        self.gun_offset = (gun_x, gun_y)
+        self.gun_rect = gun_image.get_rect()
 
         pose = self.sprites[self.count]
 
         self.avatar = pygame.Surface((48, 48))
         self.avatar.fill((0, 177, 64))
         self.avatar.blit(pose, (0, 0))
-        self.avatar.blit(gun_image, gun_offset)
+        self.avatar.blit(gun_image, self.gun_offset)
         self.avatar.blit(hand_image, hand_offset)
-        self.avatar.blit(effect, effect_offset)
         self.avatar.set_colorkey((0, 177, 64))
         self.avatar = pygame.transform.scale_by(self.avatar, 3)
 
@@ -547,42 +539,86 @@ class Player():
         self.character.mask = pygame.mask.from_surface(self.avatar)
 
 
+    def shoot(self, del_time):
+
+        if self.hand_num == 0:
+            bullet_offset = self.gun_rect.midbottom
+        elif self.hand_num == 1:
+            bullet_offset = self.gun_rect.bottomright
+        elif self.hand_num == 2:
+            bullet_offset = self.gun_rect.midright
+        elif self.hand_num == 3:
+            bullet_offset = self.gun_rect.topright
+        elif self.hand_num == 4:
+            bullet_offset = self.gun_rect.midtop
+
+        bullet_x = bullet_offset[0] + self.gun_offset[0] + self.x -24
+        bullet_y = bullet_offset[1] + self.gun_offset[1] + self.y -24
+        bullet_pos = (bullet_x, bullet_y)
+
+        ms_per_bullet = self.ms_per_frame = (1 / self.gun.bps) * 1000
+        if self.shoot_time_elapsed > ms_per_bullet:
+            self.gun.shoot(bullet_pos, pygame.mouse.get_pos())
+            self.shooted = True
+            self.shoot_time_elapsed = 0
+
+
 
     def update(self, movement, del_time):
         self.prev_flip = self.flip
+        self.update_hand_and_gun(get_angle((self.x, self.y), cur_pos))
 
         if movement == 'LEFT':
             self.dx = - 5
             self.flip = True
-            self.act('WALK', del_time, 0)
-
+            self.act('WALK', del_time)
 
         elif movement == 'RIGHT':
             self.dx = 5
             self.flip = False
-            self.act('WALK', del_time, 0)
+            self.act('WALK', del_time,0)
 
         elif movement == 'UP':
             self.dy = -10
-
-
-
 
         elif movement == 'DOWN':
             self.dy = 5
 
         else:
-            self.act('IDLE', del_time)
+            self.act('IDLE', del_time,0)
+
 
         self.dy+=5
         self.move()
-
+        self.shoot_time_elapsed += del_time
 
 
 
 
     def display(self):
         self.character.display()
+
+        if self.shooted:
+            if self.count2 < len(self.gun.effects[self.gun_num]):
+                effect = self.gun.effects[self.gun_num][self.count2]
+                effect = pygame.transform.rotate(effect, self.gun_angle)
+                effect_offset = self.gun.effect_offsets[self.hand_num]
+                self.count2 += 1
+                template = pygame.surface.Surface((96, 96))
+                template.fill((0, 177, 64))
+                template.blit(effect, (self.gun_offset[0] + effect_offset[0] + 24, self.gun_offset[1] + effect_offset[1] + 24))
+                template.set_colorkey((0, 177, 64))
+                template = pygame.transform.scale_by(template, 3)
+                effect_rect = template.get_rect(center = (self.x, self.y))
+                if self.flip:
+                    template = pygame.transform.flip(template, True, False)
+                screen.blit(template, effect_rect)
+            else:
+                self.shooted = False
+                self.count2 = 0
+
+
+
 
 def get_angle(point1, point2):
     x = point2[0] - point1[0]
@@ -624,15 +660,18 @@ foreground = Foreground(6000, 720, 64, 64, [ground, platform1, small_platform, p
 char = Character('Punk', {'IDLE': 3, 'WALK': 3}, {'IDLE': ((5, 15), (4, 15), (4, 15), (5, 15)),
                                                   'WALK': ((5, 14), (5, 14), (5, 14), (5, 15), (5, 14), (5, 13))})
 
-gun = Gun('Frostfire', 100, 20, 8, 1, {'Punk':((4, 11), (4, 11), (3, 12), (5, -4), (5, -10))})
+gun = Gun('Frostfire', 500, 20, 1, 1, {'Punk':((4, 11), (4, 11), (3, 12), (5, -4), (5, -10))}, ((-19, 16), (20, -19), (26, -22), (18, -47), (-22, -48)))
+gun2 = Gun('Microblast', 400, 20, 1, 1, {'Punk':((2, 6), (6, 9), (5, 8), (4, -10), (4, -10))}, ((-17, 25), (22, 21), (26, -19), (26, -45), (-19, -48)))
 
-player = Player(char, gun, 0, 0, 200, 300)
+
+player = Player(char, gun, 0, 0, 600, 500)
+
+bullet_group = pygame.sprite.Group()
 
 overlay = pygame.image.load('Overlay.png').convert_alpha()
 overlay.set_alpha(100)
 overlay = pygame.transform.scale(overlay, (display_width, display_height))
 
-import math
 
 run = True
 dx = 0
@@ -666,10 +705,14 @@ while run:
     elif keys[pygame.K_DOWN] == True:
         movement = 'DOWN'
     player.update(movement, del_time)
+    player.shoot(del_time)
+    bullet_group.update()
+    bullet_group.draw(screen)
     pygame.display.update()
 
     num.append(clock.get_fps())
     del_time = clock.tick_busy_loop()
+
 
 fps = 0
 for n in num:
