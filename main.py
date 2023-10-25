@@ -242,7 +242,7 @@ class Bullet(pygame.sprite.Sprite):
         self.damage = damage
         self.range = range_
         self.direction_vector = direction_vector
-        self.magnitude = 25
+        self.magnitude = 30
         self.dx = self.magnitude * direction_vector[0]
         self.dy = self.magnitude * direction_vector[1]
         self.travelled = 0
@@ -349,6 +349,7 @@ class Player():
         self.dy = 0
         self.x = x
         self.y = y
+        self.hp = 7
         self.pos = (self.x, self.y, self.environment_x, self.environment_y)
         self.inventory = []
         self.bullets = pygame.sprite.Group()
@@ -644,9 +645,6 @@ class Player():
                 self.act('JUMP', del_time)
                 self.d_jump = False
 
-
-
-
         else:
             self.act('IDLE', del_time)
 
@@ -768,8 +766,13 @@ while run:
     player.bullets.draw(screen)
     pygame.display.update()
 
+    hit = False
+    bullet = pygame.sprite.spritecollide(enemy.character, player.bullets, True, collided = pygame.sprite.collide_mask)
+    if bullet:
+        hit = True
+
     data = (player.x, player.y, player.environment_x, player.environment_y, player.count,
-            player.hand_num, player.gun_num, player.gun_angle, player.flip, player.action)
+            player.hand_num, player.gun_num, player.gun_angle, player.flip, player.action, hit)
     data = pickle.dumps(data)
     socket.send(data)
 
@@ -787,6 +790,9 @@ while run:
     enemy.gun_angle = data[7]
     enemy.flip = data[8]
     enemy.dummy_update(data[9])
+    if data[10]:
+        player.hp -= 1
+    print(player.hp)
 
     del_time = clock.tick_busy_loop()
 
