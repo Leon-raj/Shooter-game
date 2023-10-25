@@ -1,6 +1,20 @@
 import pygame
 import math
-import copy
+import socket
+import pickle
+
+host = '192.168.149.112'
+port = 9091
+socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+print('Trying to connect with server...')
+socket.connect((host, port))
+print('Connected, waiting for opponent...')
+data = socket.recv(4096)
+content = pickle.loads(data)
+print(content)
+player_details = content[0]
+enemy_details = content[1]
+
 
 pygame.init()
 clock = pygame.time.Clock()
@@ -272,7 +286,7 @@ class Gun():
         self.bullet_image = pygame.image.load(f'guns/{name}/bullet.png').convert_alpha()
         self.bullet_image = pygame.transform.scale_by(self.bullet_image, 3)
 
-    def shoot(self, player_pos, cursor_pos):
+    def shoot(self, player_pos, cursor_pos, bullet_group):
         x1 = player_pos[0]
         y1 = player_pos[1]
         x2 = cursor_pos[0]
@@ -325,21 +339,22 @@ class Player():
     scenes = ('DOUBLEJUMP', 'JUMP', 'DEATH')
 
     def __init__(self, character, gun, environment_dx, environment_dy, x, y):
-        self.character = character
-        self.gun = gun
-        self.environment_dx = environment_dx
-        self.environment_dy = environment_dy
+        self.character = Character(*character)
+        self.gun = Gun(*gun)
+        self.environment_x = environment_dx
+        self.environment_y = environment_dy
         foreground.move(environment_dx, environment_dy)
         background.move(environment_dx, environment_dy)
         self.dx = 0
         self.dy = 0
         self.x = x
         self.y = y
-        self.pos = (self.x, self.y, self.environment_dx, self.environment_dy)
+        self.pos = (self.x, self.y, self.environment_x, self.environment_y)
         self.inventory = []
-
+        self.bullets = pygame.sprite.Group()
         self.time_elapsed = 0
         self.count = 0
+        self.action = 'IDLE'
         self.prev_action = 'NONE'
         self.sprites = []
         self.ms_per_frame = 0
@@ -353,6 +368,8 @@ class Player():
         self.shoot_time_elapsed = 0
         self.count2 = 0
         self.gun_offset = 0
+        self.d_jump = False
+        self.sit = False
 
     def check_collision(self, temp_sprite):
         count = 0
@@ -416,6 +433,7 @@ class Player():
         else:
             foreground.move(-self.dx, 0)
             background.move(-self.dx, 0)
+            self.environment_x -= self.dx
         self.dx = 0
 
         if self.dy < 0:
@@ -424,6 +442,7 @@ class Player():
             else:
                 foreground.move(0, -self.dy)
                 background.move(0, -self.dy)
+                self.environment_y -= self.dy
 
         elif self.dy > 0:
             if self.y < 720 - 200:
@@ -434,8 +453,38 @@ class Player():
                 else:
                     foreground.move(0, -self.dy)
                     background.move(0, -self.dy)
+                    self.environment_y -= self.dy
 
         self.dy = 0
+        rect = self.avatar.get_rect(center=(self.x, self.y))
+        self.character.update(self.avatar, rect)
+
+    def dummy_update(self, action):
+        hand_offset = self.character.hand_offsets[action][self.count]
+        hand_image = self.character.hands[self.hand_num]
+
+        gun_image = self.gun.images[self.gun_num]
+        gun_image = pygame.transform.rotate(gun_image, self.gun_angle)
+        gun_offset = self.gun.offsets[self.character.name][self.hand_num]
+        gun_x = gun_offset[0] + hand_offset[0]
+        gun_y = gun_offset[1] + hand_offset[1]
+        self.gun_offset = (gun_x, gun_y)
+        self.gun_rect = gun_image.get_rect()
+
+        self.sprites = self.character.actions[action][0]
+        pose = self.sprites[self.count]
+
+        self.avatar = pygame.Surface((48, 48))
+        self.avatar.fill((0, 177, 64))
+        self.avatar.blit(pose, (0, 0))
+        self.avatar.blit(gun_image, self.gun_offset)
+        self.avatar.blit(hand_image, hand_offset)
+        self.avatar.set_colorkey((0, 177, 64))
+        self.avatar = pygame.transform.scale_by(self.avatar, 3)
+
+        if self.flip:
+            self.avatar = pygame.transform.flip(self.avatar, True, False)
+
         rect = self.avatar.get_rect(center=(self.x, self.y))
         self.character.update(self.avatar, rect)
 
@@ -489,14 +538,21 @@ class Player():
             self.flip = False
 
     def act(self, action, del_time, hold='NONE'):
+
+        if self.prev_action in Player.scenes:
+            action = self.prev_action
+            hold = 'NONE'
+            if self.count<2:
+                self.dy -=25
+
+        self.action = action
         self.time_elapsed += del_time
 
         if action != self.prev_action:
-            if self.prev_action not in Player.scenes:
-                self.sprites = self.character.actions[action][0]
-                self.ms_per_frame = (1 / self.character.actions[action][1]) * 1000
-                self.prev_action = action
-                self.count = 0
+            self.sprites = self.character.actions[action][0]
+            self.ms_per_frame = (1 / self.character.actions[action][1]) * 1000
+            self.prev_action = action
+            self.count = 0
 
         elif self.time_elapsed > self.ms_per_frame:
             if self.count < (len(self.sprites) - 1):
@@ -558,17 +614,21 @@ class Player():
 
         ms_per_bullet = self.ms_per_frame = (1 / self.gun.bps) * 1000
         if self.shoot_time_elapsed > ms_per_bullet:
-            self.gun.shoot(bullet_pos, pygame.mouse.get_pos())
+            self.gun.shoot(bullet_pos, pygame.mouse.get_pos(), self.bullets)
             self.shooted = True
             self.shoot_time_elapsed = 0
 
 
 
     def update(self, movement, del_time):
+
         self.prev_flip = self.flip
         self.update_hand_and_gun(get_angle((self.x, self.y), cur_pos))
 
-        if movement == 'LEFT':
+        if self.sit:
+            self.act('SIT', del_time, 2)
+
+        elif movement == 'LEFT':
             self.dx = - 5
             self.flip = True
             self.act('WALK', del_time)
@@ -579,13 +639,16 @@ class Player():
             self.act('WALK', del_time,0)
 
         elif movement == 'UP':
-            self.dy = -10
+            if self.prev_action != 'JUMP':
+                self.dy = -50
+                self.act('JUMP', del_time)
+                self.d_jump = False
 
-        elif movement == 'DOWN':
-            self.dy = 5
+
+
 
         else:
-            self.act('IDLE', del_time,0)
+            self.act('IDLE', del_time)
 
 
         self.dy+=5
@@ -596,7 +659,6 @@ class Player():
 
 
     def display(self):
-        self.character.display()
 
         if self.shooted:
             if self.count2 < len(self.gun.effects[self.gun_num]):
@@ -617,6 +679,7 @@ class Player():
                 self.shooted = False
                 self.count2 = 0
 
+        self.character.display()
 
 
 
@@ -632,11 +695,6 @@ def get_angle(point1, point2):
 # Below is test code.
 background = Background('background', 5, 0, 10, (1.8, 2.4))
 num = []
-
-bullet = pygame.image.load('guns/Frostfire/bullet.png').convert_alpha()
-bullet = pygame.transform.scale_by(bullet, 4)
-bullet = pygame.transform.rotate(bullet, 25)
-
 tiles = SpriteSheet('Tileset.png', 32, 32, (2, 2))
 ground_tile = tiles.get_large_sprite(1, 2, 2, 4)
 platform_sprite = tiles.get_large_sprite(3, 4, 5, 9)
@@ -657,16 +715,10 @@ dome1 = Object(dome, 0, 2, -4, -2)
 foreground = Foreground(6000, 720, 64, 64, [ground, platform1, small_platform, platform2, plc2, prc2, dome1])
 # [platform, 3, 4, 6, 10, False],[small_platform, 5, 6, 11, 13, True]
 
-char = Character('Punk', {'IDLE': 3, 'WALK': 3}, {'IDLE': ((5, 15), (4, 15), (4, 15), (5, 15)),
-                                                  'WALK': ((5, 14), (5, 14), (5, 14), (5, 15), (5, 14), (5, 13))})
 
-gun = Gun('Frostfire', 500, 20, 1, 1, {'Punk':((4, 11), (4, 11), (3, 12), (5, -4), (5, -10))}, ((-19, 16), (20, -19), (26, -22), (18, -47), (-22, -48)))
-gun2 = Gun('Microblast', 400, 20, 1, 1, {'Punk':((2, 6), (6, 9), (5, 8), (4, -10), (4, -10))}, ((-17, 25), (22, 21), (26, -19), (26, -45), (-19, -48)))
+player = Player(*player_details)
+enemy = Player(*enemy_details)          #just a placeholder for now.
 
-
-player = Player(char, gun, 0, 0, 600, 500)
-
-bullet_group = pygame.sprite.Group()
 
 overlay = pygame.image.load('Overlay.png').convert_alpha()
 overlay.set_alpha(100)
@@ -691,31 +743,52 @@ while run:
     background.display()
     screen.blit(tiles.get_sprite(1, 1), (300, 300))
     foreground.display()
+    enemy.display()
     player.display()
     screen.blit(overlay, (0, 0))
     # screen.blit(bullet,(10,10))
 
     keys = pygame.key.get_pressed()
-    if keys[pygame.K_LEFT] == True:
+    if keys[pygame.K_LEFT] or keys[pygame.K_a]:
         movement = 'LEFT'
-    if keys[pygame.K_RIGHT] == True:
+    if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
         movement = 'RIGHT'
-    if keys[pygame.K_UP] == True:
+    if keys[pygame.K_UP] or keys[pygame.K_w]:
         movement = 'UP'
-    elif keys[pygame.K_DOWN] == True:
-        movement = 'DOWN'
+    if keys[pygame.K_s]:
+        player.shoot(del_time)
+    if keys[pygame.K_LSHIFT]:
+        if player.sit:
+            player.sit = False
+        else:
+            player.sit = True
+
     player.update(movement, del_time)
-    player.shoot(del_time)
-    bullet_group.update()
-    bullet_group.draw(screen)
+    player.bullets.update()
+    player.bullets.draw(screen)
     pygame.display.update()
 
-    num.append(clock.get_fps())
+    data = (player.x, player.y, player.environment_x, player.environment_y, player.count,
+            player.hand_num, player.gun_num, player.gun_angle, player.flip, player.action)
+    data = pickle.dumps(data)
+    socket.send(data)
+
+    data = socket.recv(4096)
+    data = pickle.loads(data)
+    edx = data[2] - player.environment_x                #enemy.environment_x - player.environment_x
+    edy = data[3] - player.environment_y
+    enemy.x = data[0] - edx                             #enemy.x + edx
+    enemy.y = data[1] - edy
+    enemy.environment_x -= edx
+    enemy.environment_y -= edy
+    enemy.count = data[4]
+    enemy.hand_num = data[5]
+    enemy.gun_num = data[6]
+    enemy.gun_angle = data[7]
+    enemy.flip = data[8]
+    enemy.dummy_update(data[9])
+
     del_time = clock.tick_busy_loop()
 
 
-fps = 0
-for n in num:
-    fps += n
-fps = fps / len(num)
-print(fps)
+
