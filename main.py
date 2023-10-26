@@ -376,6 +376,26 @@ class Player():
         count = 0
         change = 0
 
+
+        for group in foreground.objects:
+            collided_sprites = pygame.sprite.spritecollide(temp_sprite, group, False)
+            if collided_sprites:
+                collided_sprites = pygame.sprite.spritecollide(temp_sprite, group, False, pygame.sprite.collide_mask)
+                if collided_sprites:
+                    collided_sprite = collided_sprites[0]
+                    if collided_sprite.rect.collidepoint(temp_sprite.rect.midbottom):
+                        print('h')
+                        change = -1
+                    elif collided_sprite.rect.collidepoint(temp_sprite.rect.midtop):
+                        change = 1
+
+                    while pygame.sprite.collide_mask(temp_sprite, collided_sprite) and change != 0:
+                        temp_sprite.rect.move_ip(0, change)
+                        count += change
+                    self.dy += count
+                    temp_sprite.rect.move_ip(0, self.dy)
+
+
         temp_sprite.rect.move_ip(self.dx, 0)
         for group in foreground.objects:
             collided_sprites = pygame.sprite.spritecollide(temp_sprite, group, False)
@@ -388,11 +408,7 @@ class Player():
                         change = 1
                     elif self.dx > 0:
                         change = -1
-                    '''else:
-                        if self.flip:
-                            change=1
-                        else:
-                            change=-1'''
+
 
                     if self.prev_flip == True and self.flip == False:
                         change = 1
@@ -637,7 +653,7 @@ class Player():
         elif movement == 'RIGHT':
             self.dx = 5
             self.flip = False
-            self.act('WALK', del_time,0)
+            self.act('WALK', del_time)
 
         elif movement == 'UP':
             if self.prev_action != 'JUMP':
